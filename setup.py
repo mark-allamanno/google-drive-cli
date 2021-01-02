@@ -14,13 +14,13 @@ setuptools.setup(
 
     author='Mark Allamanno',
     author_email='mark.allamanno@gmail.com',
-    url='github link placeholder',
+    url='https://github.com/mark-allamanno/google-drive-cli',
 
     description='A Google Drive CLI Client',
     long_description=long_description,
     long_description_content_type='text/markdown',
 
-    package_dir={'': 'gdrive-cli'},
+    package_dir={'': 'google-drive-cli'},
     py_modules=['cloud', 'commands', 'exceptions', 'main'],
 
     install_requires=['prompt-toolkit', 'pydrive2', 'fuzzywuzzy', 'python-Levenshtein'],
