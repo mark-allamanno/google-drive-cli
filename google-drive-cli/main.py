@@ -85,6 +85,10 @@ def execute_shell():
             if arguments:
                 FUNCTION_COMMANDS[command](arguments)
 
+    # If we try to create or access files that we are not allowed to then let the user know
+    except PermissionError as e:
+        print_formatted_text(ANSI(f"\x1b[31mCannot create or access file location '{e.filename}'. Permission denied!"))
+
     # If a GoogleDriveCLIException is raised then it will print an error message to the user and we can continue
     except GoogleDriveCLIException:
         pass

@@ -1,11 +1,12 @@
 from pathlib import Path
 from typing import List
 
-from prompt_toolkit import ANSI
-from prompt_toolkit.shortcuts import print_formatted_text, prompt
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from pydrive2.files import GoogleDriveFile
+
+from prompt_toolkit import ANSI
+from prompt_toolkit.shortcuts import print_formatted_text, prompt
 
 from exceptions import RemotePathNotFound
 
@@ -212,8 +213,6 @@ class RemoteDriveInterface:
         # If we match any files then we definitely found a file but may need to resolve a same name issue with user
         if num_matches := len(matching_files):
             return matching_files.pop() if num_matches == 1 else self.resolve_mnemonic_conflict(matching_files)
-        else:
-            return None
 
     def get_object_children(self, parent=None, trashed=False) -> List[GoogleDriveFile]:
         """
@@ -289,7 +288,7 @@ class RemoteDriveInterface:
             parent (GoogleDriveFile): Returns the most recent GoogleDriveFile created
         """
 
-        full_path = Path(directory_path)
+        full_path = Path(directory_path)    # Create a path object for easy manipulations
 
         if full_path.name:
 

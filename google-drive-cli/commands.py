@@ -172,7 +172,7 @@ def upload_local_files(args: Dict, recursed=False) -> None:
     # Then make sure the remote path exists or the user is okay with creating it
     if not DRIVE.get_remote_file(remote_path) and not recursed:
 
-        if ansi_yes_no_prompt('Remote path does not exist. Create anyways (y/n)?') == 'n':
+        if ansi_yes_no_prompt('Remote path does not exist. Create anyways (y/n/c)?') in 'nc':
             return
 
     if args['--folder'] and local_path.is_dir():
@@ -224,7 +224,7 @@ def download_remote_file(args: Dict, parent_folder=None, recursed=False) -> None
     # Make sure the local path either exists or the user is okay with creating it
     if not local_path.parent.exists() and not recursed:
 
-        if ansi_yes_no_prompt('Local path does not exist. Create anyways (y/n)?') == 'n':
+        if ansi_yes_no_prompt('Local path does not exist. Create anyways (y/n/c)?') in 'nc':
             return
 
     if remote_file:
@@ -428,7 +428,7 @@ def manage_permissions(args: Dict):
 def move_remote_file(args: Dict):
     """
 
-
+    Moves a remote file to a different location on the server.
 
     Usage:
         mv [options] <SOURCE> <DEST>
@@ -450,7 +450,7 @@ def move_remote_file(args: Dict):
         # If we have a valid remote file but the destination parent doesnt exist yet then create it if the user wants
         if dest_parent is None:
 
-            if ansi_yes_no_prompt('Remote destination does not exist. Create anyways (y/n)?') == 'n':
+            if ansi_yes_no_prompt('Remote destination does not exist. Create anyways (y/n/c)?') in 'nc':
                 return
 
             dest_parent = DRIVE.create_file_path(remote_dest.parent)
