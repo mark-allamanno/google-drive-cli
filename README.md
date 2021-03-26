@@ -1,6 +1,8 @@
 
 # Google Drive CLI
 
+### Google Drive CLI is exactly what it sounds like, a command line interface for Google Drive that enables all normal actions that can be taken in the regular web-based interface for Google Drive.
+
 # Commands
 
 #### `search` - Searches for files that contain a given string 

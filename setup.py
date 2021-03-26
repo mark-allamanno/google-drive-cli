@@ -10,7 +10,7 @@ with open('README.md', 'r') as file:
 setuptools.setup(
 
     name='google-drive-cli',
-    version='0.0.1',
+    version='0.0.3',
 
     author='Mark Allamanno',
     author_email='mark.allamanno@gmail.com',

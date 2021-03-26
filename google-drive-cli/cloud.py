@@ -10,6 +10,7 @@ from prompt_toolkit.shortcuts import print_formatted_text, prompt
 
 from exceptions import RemotePathNotFound
 
+
 # A dictionary linking all file extensions to their corresponding export endpoints
 SUPPORTED_FILE_TYPES = {
     '.html': 'text/html',
@@ -45,24 +46,10 @@ class RemoteDriveInterface:
         self.files = {file['id']: file for file in self.drive.ListFile({'q': "trashed=false"}).GetList()}
         self.trash = {file['id']: file for file in self.drive.ListFile({'q': "trashed=true"}).GetList()}
 
-    @property
-    def drive_root(self) -> GoogleDriveFile:
-        """
-        Get the root parent reference of the user's Google Drive. It is important to remember this is technically not a
-        full google drive file as no such file is possible, we instead only get the parent reference which has the id
-        of the root which is what we really want.
-
-        Returns:
-            parent (GoogleDriveFile): The parent reference to the root node in the google drive
-        """
-
-        # We cannot technically access the root normally so we must look at all parent references
+        # Finally we need to find the root of this google drive so we first need to get all parent references - root is
+        # not considered a normal file
         all_parents = [parent for file in self.files.values() for parent in file['parents']]
-
-        # Go through all parent references until we find the one that identifies as the root
-        for parent in all_parents:
-            if parent['isRoot']:
-                return parent
+        self.drive_root = [parent for parent in all_parents if parent['isRoot']].pop()
 
     def update_file_manifest(self) -> None:
         """Updates the local file cache with all remote files. Just queries the API to get the files listings"""
@@ -73,10 +60,10 @@ class RemoteDriveInterface:
     @staticmethod
     def resolve_mnemonic_conflict(matching_filenames: List[GoogleDriveFile]) -> GoogleDriveFile:
         """
-        A function to ask the user to resolve any mnemonic conflicts that can arise because of how google drive
-        works. Since Google drive has display names that are not unique since we want to use traditional file pathing
-        as much as possible it is possible that a filename may correspond to many different files. In that case we
-        need to ask the user which one they meant to reference with their query
+        A function to ask the user to resolve any mnemonic conflicts that can arise because of how Google Drive
+        works. Since Google Drive has display names that are not unique and since we want to use traditional file
+        pathing as much as possible it is possible that a filename may correspond to many different files. In that case
+        we need to ask the user which one they meant to reference with their query
 
         Parameters:
             matching_filenames (List[GoogleDriveFile]): A list of all google drive files matched the query by the user
@@ -90,7 +77,7 @@ class RemoteDriveInterface:
 
         while 1:
 
-            # let the user know what is going wrong before anything else
+            # Let the user know what is going wrong before anything else
             print_formatted_text(ANSI("\x1b[31mThere are multiple files with the same filename given!\n"))
 
             # Until the user provides the info we want keep printing the matching files
@@ -110,10 +97,9 @@ class RemoteDriveInterface:
     @staticmethod
     def resolve_file_conversion(remote_file: GoogleDriveFile) -> str:
         """
-        A function to take in a document type aka one of the keys given from SUPPORTED_FILE_TYPES and along with a
-        remote file and return to the caller a string that represents the file extension to use for this file. This
-        exists to let users who may not know what conversion are available see all options that are available to them
-        given a document type
+        A function to take in a remote file and return to the caller a string that represents the file extension to use
+        for this file. This exists to let users who may not know what conversion are available see all options that are
+        available to them given a document type so they can download the file as the one best suited to their needs.
 
         Parameters:
             remote_file (GoogleDriveFile): The remote file who we are attempting to get the conversion for
@@ -126,13 +112,12 @@ class RemoteDriveInterface:
 
             # Print the helpful prompt on what the user is choosing and cache the supported conversions list for this
             # file
-            print_formatted_text(
-                ANSI(f"\x1b[36mWhat file type would you like to convert \"{remote_file['title']}\" to?"))
+            print_formatted_text(ANSI(f"\x1b[36mWhat file type would you like to convert \"{remote_file['title']}\" to?"))
             conversion_opts = [ext for ext, link in SUPPORTED_FILE_TYPES.items() if link in remote_file['exportLinks']]
 
             # Print out all of the possible conversion's for this document and their associated number
             for choice, conversion in enumerate(conversion_opts):
-                print_formatted_text(f"{choice + 1}: {conversion}")
+                print_formatted_text(f"[{choice + 1}]: {conversion}")
 
             try:
                 # Prompt the user for their choice of the file types printed out above
@@ -144,12 +129,13 @@ class RemoteDriveInterface:
 
             # If the user input a non integer cast-able value then inform them to use the numbers
             except ValueError:
-                print_formatted_text(ANSI('\x1b[31mPlease input the number that corresponds to your desired file type'))
+                print_formatted_text(ANSI('\x1b[31mPlease input the integer that corresponds to your desired file type'))
 
-    def valid_remote_path(self, file: GoogleDriveFile, remote_path: str, search_trash=False):
+    def validate_remote_path(self, file: GoogleDriveFile, remote_path: str, search_trash=False) -> bool:
         """
         Given a valid remote GoogleDriveFile and a semantic file path validate that using this path we could access
-        this same file and if we can then return true if this file path cannot lead us to this file though return False
+        this same file and if we can then return true however if this file path cannot lead us to the given file file
+        then return false
 
         Parameters:
             file (GoogleDriveFile): The GoogleDriveFile we are starting from to validate the path
@@ -176,8 +162,7 @@ class RemoteDriveInterface:
         # We need to investigate further, look at all files and see if their id matches a parent and attempt to
         # validate them too if non validate correctly then return false
         for check in files_to_search:
-            if check['id'] in parent_ids and self.valid_remote_path(check, to_validate.parent,
-                                                                    search_trash=search_trash):
+            if check['id'] in parent_ids and self.validate_remote_path(check, to_validate.parent, search_trash=search_trash):
                 return True
 
         return False
@@ -197,9 +182,8 @@ class RemoteDriveInterface:
         """
 
         # Convert the filename to a file path for easier manipulation and create a list of matching file names
-        full_path = Path(filename)
         files_to_check = self.trash.values() if trashed else self.files.values()
-        matching_files = list()
+        full_path, matching_files = Path(filename), list()
 
         # Make sure that the file path is not the root before continuing
         if not full_path.name:
@@ -207,7 +191,7 @@ class RemoteDriveInterface:
 
         # Look over all files and if their filename matches the given one then validate that their full paths match
         for file in files_to_check:
-            if file['title'] == full_path.name and self.valid_remote_path(file, filename, search_trash=trashed):
+            if file['title'] == full_path.name and self.validate_remote_path(file, full_path, search_trash=trashed):
                 matching_files.append(file)
 
         # If we match any files then we definitely found a file but may need to resolve a same name issue with user
@@ -251,9 +235,6 @@ class RemoteDriveInterface:
         # Get the full path and the parent of the full path before starting
         full_path = Path(remote_path)
 
-        if not full_path.is_file():
-            return
-
         # If the file is not already present in the drive then create a new file and if it is then update it
         if not (duplicate := self.get_remote_file(remote_path)):
 
@@ -265,6 +246,7 @@ class RemoteDriveInterface:
             else:
                 file = self.drive.CreateFile({'title': full_path.name, 'parents': [{'id': parent['id']}]})
 
+        # Otherwise this file already exists in the remote drive so we need to update its contents
         else:
             file = duplicate
 
@@ -311,6 +293,7 @@ class RemoteDriveInterface:
             if not recursed:
                 self.update_file_manifest()
 
+            # Return the newly created folder if it was a new creation otherwise return the preexisting folder
             return folder if not duplicate else duplicate
 
     def download_file(self, remote_path: Path, local_path: Path) -> None:
@@ -326,8 +309,7 @@ class RemoteDriveInterface:
 
         if remote_file := self.get_remote_file(str(remote_path)):
 
-            parent_dir = local_path.parent
-            path_suffix = local_path.suffix
+            parent_dir, path_suffix = local_path.parent, local_path.suffix
 
             # If the remote files exists then make sure we have a local dir to read to
             if not parent_dir.exists():
@@ -336,16 +318,19 @@ class RemoteDriveInterface:
             # If the remote file if not a proprietary google file then download normally otherwise we need to convert
             if not remote_file['mimeType'].startswith('application/vnd.google-apps.'):
                 remote_file.GetContentFile(str(local_path))
-            else:
-                # Get the suffix of the file and use that to decipher what conversion mimetype to use
 
+            else:
+
+                # Get the suffix of the file and use that to decipher what conversion mimetype to use
                 if SUPPORTED_FILE_TYPES.get(path_suffix) in remote_file['exportLinks'].keys():
                     file_suffix = path_suffix
                 else:
                     file_suffix = self.resolve_file_conversion(remote_file)
                     local_path = Path(str(local_path) + file_suffix)
 
+                # Once we have he mimetype then download the file with that specific mimetype
                 remote_file.GetContentFile(local_path, mimetype=SUPPORTED_FILE_TYPES[file_suffix])
+
         else:
             raise RemotePathNotFound(remote_path)
 

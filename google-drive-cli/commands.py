@@ -47,7 +47,7 @@ def change_directory(args: Dict) -> None:
     cd command if you are familiar with that.
 
     Usage:
-        cd <PATH>
+        cd (--remote=<PATH> | <PATH>)
 
     Options:
         -h, --help      Shows this screen
@@ -56,7 +56,7 @@ def change_directory(args: Dict) -> None:
     global REMOTE_FILE_PATH
 
     # Make sure the user did not type in an empty change directory
-    if user_input_path := args['<PATH>']:
+    if user_input_path := (args['<PATH>'] or args['--remote']):
 
         # If the user typed in cd / then move back to the root folder
         if user_input_path.startswith('/'):
@@ -72,13 +72,15 @@ def change_directory(args: Dict) -> None:
         path_to_follow = REMOTE_FILE_PATH / user_input_path
         folder = DRIVE.get_remote_file(path_to_follow)
 
-        # If we found a matching folder and it isnt a file then "move" there otherwise print a help message
+        # If we found a matching folder and it isn't a file then "move" there otherwise print a help message
         if folder and (folder == DRIVE.drive_root or folder['mimeType'] == 'application/vnd.google-apps.folder'):
             REMOTE_FILE_PATH = path_to_follow
 
+        # If no file path exists then the user is trying to go somewhere that doesnt exist
         elif not folder:
             raise RemotePathNotFound(path_to_follow)
 
+        # Otherwise the object exists but is a file instead of a folder
         else:
             raise RemotePathIsFile(path_to_follow)
 
@@ -99,7 +101,7 @@ def list_directory(args: Dict) -> None:
     environment ls.
 
     Usage:
-        ls [--dir=<PATH>] [options]
+        ls [--remote=<PATH>] [options]
 
     Options:
         -l, --verbose   List all files with verbose information
@@ -109,7 +111,7 @@ def list_directory(args: Dict) -> None:
     """
 
     # Get all of the children of the parent and decode the line ending for formatted printing
-    remote_path = args['--dir'] if args['--dir'] else REMOTE_FILE_PATH
+    remote_path = args['--remote'] or REMOTE_FILE_PATH
     remote_file = DRIVE.get_remote_file(remote_path, trashed=args['--all'])
     all_children = DRIVE.get_object_children(remote_file['id'], trashed=args['--all'])
 
@@ -153,7 +155,7 @@ def upload_local_files(args: Dict, recursed=False) -> None:
     we also upload sob-folders else only immediate files of the specified folder will be uploaded to the server.
 
     Usage:
-        push [options] <LOCAL> <REMOTE>
+        push [options] (--local=<LOCAL> | <LOCAL>) (--remote=<REMOTE> | <REMOTE>)
 
     Options:
         -f, --folder        Use this flag if we want to upload the contents of a folder
@@ -161,9 +163,12 @@ def upload_local_files(args: Dict, recursed=False) -> None:
         -h, --help          Shows this screen
     """
 
+    remote = args['<REMOTE>'] or args['--remote']
+    local = args['<LOCAL>'] or args['--local']
+
     # Use the absolute path if the user wants otherwise use the relative path from the cwd
-    remote_path = Path(args['<REMOTE>']) if args['<REMOTE>'].startswith('/') else REMOTE_FILE_PATH / args['<REMOTE>']
-    local_path = Path(args['<LOCAL>']) if args['<LOCAL>'].startswith('/') else Path.home() / args['<LOCAL>']
+    remote_path = Path(remote) if remote.startswith('/') else REMOTE_FILE_PATH / remote
+    local_path = Path(local) if local.startswith('/') else Path.home() / local
 
     # Make sure the local path exists before attempting to upload it
     if not local_path.exists():
@@ -171,28 +176,27 @@ def upload_local_files(args: Dict, recursed=False) -> None:
 
     # Then make sure the remote path exists or the user is okay with creating it
     if not DRIVE.get_remote_file(remote_path) and not recursed:
-
         if ansi_yes_no_prompt('Remote path does not exist. Create anyways (y/n/c)?') in 'nc':
             return
 
-    if args['--folder'] and local_path.is_dir():
+    if args['--folder'] and local_path.is_dir():  # Make sure that folder option is enabled with folders
 
-        for file in local_path.iterdir():
+        for file in local_path.iterdir():  # Iterate over all files in the source directory
 
-            # Get the local and remote path's for the files
-            absolute_local = str(file)
-            absolute_remote = str(remote_path / file.name)
+            # Get the local and remote path's for the files to be placed
+            absolute_local, absolute_remote = str(file), str(remote_path / file.name)
 
-            # If the file is a directory and we are uploading recursively then recursively upload that file too
-            # otherwise skip it
+            # If the file is a directory and we are uploading recursively then recursively upload that folder
             if file.is_dir() and args['--recursive']:
                 recur_args = args.copy()
-                recur_args['<LOCAL>'], recur_args['<REMOTE>'] = absolute_local, absolute_remote
+                recur_args['<LOCAL'], recur_args['<REMOTE>'] = absolute_local, absolute_remote
                 upload_local_files(recur_args, recursed=True)
+
+            # Otherwise just upload the file like normal
             elif file.is_file():
                 DRIVE.create_file(absolute_local, absolute_remote)
 
-    # If the user wants to upload a single file then just upload it
+    # If the user wants to upload a single file then just upload it easily
     elif local_path.is_file():
         DRIVE.create_file(local_path, remote_path)
 
@@ -208,7 +212,7 @@ def download_remote_file(args: Dict, parent_folder=None, recursed=False) -> None
     Download a given remote file or folder specified by REMOTE and save it to a local location LOCAL
 
     Usage:
-        pull [options] <REMOTE> <LOCAL>
+        pull [options] (--remote=<REMOTE> | <REMOTE>) (--local=<LOCAL> | <LOCAL>)
 
     Options:
         -f, --folder        Use this flag if we want to upload the contents of a folder
@@ -216,43 +220,48 @@ def download_remote_file(args: Dict, parent_folder=None, recursed=False) -> None
         -h, --help          Shows this screen
     """
 
+    remote = args['<REMOTE>'] or args['--remote']
+    local = args['<LOCAL>'] or args['--local']
+
     # Use the absolute path if the user starts from the root, otherwise use the relative path from the cwd
-    remote_path = Path(args['<REMOTE>']) if args['<REMOTE>'].startswith('/') else REMOTE_FILE_PATH / args['<REMOTE>']
-    local_path = Path(args['<LOCAL>']) if args['<LOCAL>'].startswith('/') else Path.home() / args['<LOCAL>']
+    remote_path = Path(remote) if remote.startswith('/') else REMOTE_FILE_PATH / remote
+    local_path = Path(local) if local.startswith('/') else Path.home() / local
     remote_file = DRIVE.get_remote_file(remote_path) if parent_folder is None else parent_folder
 
     # Make sure the local path either exists or the user is okay with creating it
     if not local_path.parent.exists() and not recursed:
-
         if ansi_yes_no_prompt('Local path does not exist. Create anyways (y/n/c)?') in 'nc':
             return
 
-    if remote_file:
+    if remote_file:  # Make sure the remote file is present on the server before trying to download it
 
         if args['--folder'] and remote_file['mimeType'] == 'application/vnd.google-apps.folder':
 
             for drive_file in DRIVE.get_object_children(remote_file['id']):
 
                 # Get the local and remote path's for the files
-                absolute_local = local_path / drive_file['title']
-                absolute_remote = remote_path / drive_file['title']
+                absolute_local, absolute_remote = local_path / drive_file['title'], remote_path / drive_file['title']
 
-                # If the file is a directory and we are uploading recursively then recursively upload that file too
-                # otherwise skip it
+                # If the file is a directory and we are uploading recursively then recursively download the folder
                 if drive_file['mimeType'] == 'application/vnd.google-apps.folder' and args['--recursive']:
                     recur_args = args.copy()
                     recur_args['<LOCAL>'], recur_args['<REMOTE>'] = str(absolute_local), str(absolute_remote)
                     download_remote_file(recur_args, parent_folder=drive_file, recursed=True)
+
+                # Otherwise just download the single file as normal
                 else:
                     DRIVE.download_file(absolute_remote, absolute_local)
 
+        # If the user is trying to download a folder without the proper flags then let them know
         elif remote_file['mimeType'] == 'application/vnd.google-apps.folder':
             print_formatted_text(ANSI('\x1b[31mThe given local path is a directory, use the "--folder" option if you '
                                       'wish to upload a directories'))
 
+        # Otherwise just download the singular file as normal
         else:
             DRIVE.download_file(remote_path, local_path)
 
+    # Otherwise let the user know they are trying to download an non-existent file
     else:
         raise RemotePathNotFound(remote_path)
 
@@ -260,18 +269,21 @@ def download_remote_file(args: Dict, parent_folder=None, recursed=False) -> None
 def list_single_file_verbose(args: Dict):
     """
 
-    Prints out very verbose information about this REMOTE file
+    Prints out very verbose information about this remote file, which includes but is not limited to, the date last
+    modified, date created, owner, various file information, and much more.
 
     Usage:
-        info [options] <REMOTE>
+        info [options] (--remote=<REMOTE> | <REMOTE>)
 
     Options:
         -h, --help      Shows this screen
     """
 
-    remote_path = Path(args['<REMOTE>']) if args['<REMOTE>'].startswith('/') else REMOTE_FILE_PATH / args['<REMOTE>']
+    # Get the remote path of the file/folder to print out the verbose information for
+    remote = args['<REMOTE>'] or args['--remote']
+    remote_path = Path(remote) if remote.startswith('/') else REMOTE_FILE_PATH / remote
 
-    if remote_file := DRIVE.get_remote_file(remote_path):
+    if remote_file := DRIVE.get_remote_file(remote_path):  # Get the google drive file of this path
 
         file_permissions = remote_file.GetPermissions()
 
@@ -344,7 +356,7 @@ def manage_permissions(args: Dict):
     Manage the sharing permissions of a specific file
 
     Usage:
-        share [--add | --delete] [--link] [--reader | --writer | --owner] <REMOTE> [EMAILS ...]
+        share [--add | --delete] [--link] [--reader | --writer | --owner] (--remote=<REMOTE> | <REMOTE>) [EMAILS ...]
 
     Options:
         -a, --add       Adds permissions for some user's email or creates a new sharing link
@@ -353,14 +365,17 @@ def manage_permissions(args: Dict):
         -r, --reader    Set the permission for this email/link to be read access only
         -w, --writer    Set the permission for this email/link to be read/write access
         -o, --owner     Set the permission for this email/link to be full ownership
+        -q, --quiet     Do not raise errors if we try and add invalid emails or remove non-existent permissions
         -h, --help      Shows this message
     """
 
-    remote_path = Path(args['<REMOTE>']) if args['<REMOTE>'].startswith('/') else REMOTE_FILE_PATH / args['<REMOTE>']
+    # Get the remote path of the file/folder to share with people
+    remote = args['<REMOTE>'] or args['--remote']
+    remote_path = Path(remote) if remote.startswith('/') else REMOTE_FILE_PATH / remote
 
-    if remote_file := DRIVE.get_remote_file(remote_path):
+    if remote_file := DRIVE.get_remote_file(remote_path):  # Make sure the object actually exists first
 
-        if args['--add']:
+        if args['--add']:  # We are adding permissions to the file
 
             # If we are adding permissions then iterate over all of the args in items and set the role_input var to
             # whichever role_flag is set [-r, -w, -o]
@@ -370,7 +385,7 @@ def manage_permissions(args: Dict):
                 if val and role in ['--writer', '--reader', '--owner']:
                     role_input = role.replace('-', '')
 
-            if role_input is not None:
+            if role_input is not None:  # If we are adding a valid role then progress further
 
                 # Get the sharing type and accessors depending on if we are trying to make a sharing link or share with
                 # specific people
@@ -386,21 +401,21 @@ def manage_permissions(args: Dict):
                         'withLink': args['--link']
                     })
 
-                # If the list of accessors is empty then the user needs to be told they used it wrong
-                if not who_can_access:
+                # If the list of accessors is empty then the user needs to be told they used the command wrong
+                if not who_can_access and not args['--quiet']:
                     raise NoTargetHostGiven()
 
                 # If the user is trying to make a sharing link then print it to the console
                 if args['--link']:
                     print_formatted_text(ANSI(f"\x1b[36mSharable Link: {remote_file['alternateLink']}"))
 
+            # If no role is given for the add command then we have a problem and cannot continue
             else:
-                # If no role is given for the add command then we have a problem and cannot continue
                 raise NoRoleSelected()
 
-        elif args['--delete']:
+        elif args['--delete']:  # We are trying to delete a permissions from the file
 
-            if not args['--link']:
+            if not args['--link']:  # If we are only trying to remove certain people from the file then do so
 
                 # If the user is not attempting to delete a sharing link then they should have input emails to delete
                 # so iterate over the permissions to find them
@@ -414,11 +429,11 @@ def manage_permissions(args: Dict):
                         valid_users.add(email)
 
                 # If not all emails given are present in the permissions for the file then let the user know
-                if not valid_users == set(args['EMAILS']):
+                if not valid_users == set(args['EMAILS']) and not args['--quiet']:
                     raise PermissionNonExistent(set(args['EMAILS']) - valid_users)
 
+            # Otherwise we know the user is trying to delete a share link and can skip iteration
             else:
-                # Otherwise we know the user is trying to delete a share link and can skip iteration
                 remote_file.DeletePermission('anyoneWithLink')
 
     else:
@@ -431,15 +446,18 @@ def move_remote_file(args: Dict):
     Moves a remote file to a different location on the server.
 
     Usage:
-        mv [options] <SOURCE> <DEST>
+        mv [options] (--remote-source=<SOURCE> | <SOURCE>) (--remote-dest=<DEST> | <DEST>)
 
     Options:
         -h, --help      Shows this message
     """
 
+    source = args['<SOURCE>'] or args['--remote-source']
+    dest = args['<DEST>'] or args['--remote-dest']
+
     # Get the full path's for both the current file location and the destination location
-    remote_source = Path(args['<SOURCE>']) if args['<SOURCE>'].startswith('/') else REMOTE_FILE_PATH / args['<SOURCE>']
-    remote_dest = Path(args['<DEST>']) if args['<DEST>'].startswith('/') else REMOTE_FILE_PATH / args['<DEST>']
+    remote_source = Path(source) if source.startswith('/') else REMOTE_FILE_PATH / source
+    remote_dest = Path(dest) if dest.startswith('/') else REMOTE_FILE_PATH / dest
 
     # Then get the actual google drive files for the parent of the current location and the destination parent
     source_parent = DRIVE.get_remote_file(remote_source.parent.name)
@@ -511,13 +529,15 @@ def search_remote_file(args: Dict):
         # Return all of the paths to this file from all of its parents
         return paths
 
-    # Then define two functions for determining string matches and choose between them depending on user preference
+    # This function will use strict matching ie the input has to be the same
     def strict_match(user_input, title):
         return user_input in title
 
+    # This function will use fuzzy matching ie the input has to be kinda close to the file name and it will catch it
     def fuzzy_match(user_input, title):
         return 80 <= fuzz.partial_token_sort_ratio(user_input, title)
 
+    # Decide which kind of matching we want to use in our file search
     string_match_func = fuzzy_match if args['--fuzzy'] else strict_match
 
     # Then we want to look at all files and check for a potential match
@@ -537,7 +557,7 @@ def remove_file(args: Dict):
     -d flag is set the file is irrevocably deleted from the server and cannot be recovered so use with care.
 
     Usage:
-        rm [options] <PATH>
+        rm [options] (--remote=<REMOTE> | <REMOTE>)
 
     Options:
 
@@ -546,7 +566,8 @@ def remove_file(args: Dict):
     """
 
     # Get the remote path to a file and then use the drive to delete it
-    remote_path = Path(args['<PATH>']) if args['<PATH>'].startswith('/') else REMOTE_FILE_PATH / args['<PATH>']
+    remote = args['<REMOTE>'] or args['--remote']
+    remote_path = Path(remote) if remote.startswith('/') else REMOTE_FILE_PATH / remote
     DRIVE.delete_remote_file(remote_path)
 
 
@@ -556,13 +577,15 @@ def recover_file(args: Dict):
     Remove a file from the trash bin and restore it to its original place in the remote drive
 
     Usage:
-        restore <PATH>
+        restore (--remote=<REMOTE> | <REMOTE>)
 
     Options:
         -h, --help      Shows this message
     """
 
-    remote_path = Path(args['<PATH>']) if args['<PATH>'].startswith('/') else REMOTE_FILE_PATH / args['<PATH>']
+    # Get the remote path to a file and then use the drive to un-delete it
+    remote = args['<REMOTE>'] or args['--remote']
+    remote_path = Path(remote) if remote.startswith('/') else REMOTE_FILE_PATH / remote
     DRIVE.recover_remote_file(remote_path)
 
 

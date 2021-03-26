@@ -19,9 +19,9 @@ class UnsupportedFileType(GoogleDriveCLIException):
 
     def __init__(self, file_type, accepted_types):
         super(UnsupportedFileType, self).__init__()
-        print_formatted_text(ANSI(
-            f'\x1b[31mFile type "{file_type}" is an unsupported conversion at this time. Only conversions to '
-            f'{list(accepted_types.keys())} are supported!'))
+        print_formatted_text(
+            ANSI(f'\x1b[31mFile type "{file_type}" is an unsupported conversion at this time. Only conversions to '
+                 f'{list(accepted_types.keys())} are supported!'))
 
 
 class RemotePathIsFile(GoogleDriveCLIException):
@@ -70,5 +70,5 @@ class NoTargetHostGiven(GoogleDriveCLIException):
 
     def __init__(self):
         super(NoTargetHostGiven, self).__init__()
-        print_formatted_text(
-            ANSI('\x1b[31mNo email was given to share the document with and the ""--link" flag was not set'))
+        print_formatted_text(ANSI('\x1b[31mNo email was given to share the document with and the ""--link" flag was '
+                                  'not set'))
