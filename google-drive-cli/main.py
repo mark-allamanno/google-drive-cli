@@ -29,55 +29,6 @@ FUNCTION_COMMANDS = {
 }
 
 
-class CustomPathCompleter(Completer):
-
-    def get_completions(self, document, complete_event):
-
-        filepath_guess, file_path_location, path_is_local = None, 0, True
-
-        if not document.text.count('"') % 2:
-            input_tokens = shlex.split(document.text)
-        else:
-            input_tokens = shlex.split(document.text + '"')
-
-        for token in input_tokens:
-
-            if token.startswith('--local='):
-                filepath_guess = Path(token[8:]) if 9 <= len(token) and token[8] == '/' else Path.home() / token[8:]
-                file_path_location = document.text.rfind(str(filepath_guess))
-                path_is_local = True
-
-            elif token.startswith('--remote='):
-                filepath_guess = Path(token[9:]) if 10 <= len(token) and token[9] == '/' else cli.REMOTE_FILE_PATH / token[9:]
-                file_path_location = document.text.rfind(str(filepath_guess))
-                path_is_local = False
-
-        if not filepath_guess or filepath_guess.is_file() or ' ' in document.text[file_path_location:]:
-            return None
-
-        if path_is_local:
-
-            dir_to_iter = filepath_guess.parent if not filepath_guess.exists() else filepath_guess
-
-            for guess in dir_to_iter.iterdir():
-
-                name_to_comp = filepath_guess.name if not filepath_guess.exists() else ''
-
-                if name_to_comp in guess.name:
-                    print(guess)
-                    yield Completion(guess.name, start_position=document.text.rfind(str(guess.parent)) + 1)
-
-        else:
-
-            for file in cli.DRIVE.files.values():
-
-                remote_file_path = filepath_guess.parent / file['title']
-
-                if filepath_guess.name in file['title'] and cli.DRIVE.validate_remote_path(file, str(remote_file_path)):
-                    yield Completion(str(filepath_guess.parent / file['title']),
-                                     start_position=document.text.rfind(str(filepath_guess.parent)) + 1)
-
-
 def parse_user_input(user_input: str):
     """
     A function to parse user input into a friendly form using the docopt library. We firstly need to split the user
@@ -114,6 +65,7 @@ def parse_user_input(user_input: str):
         return command, dict()
 
     except ValueError:
+        # If the error was caused by not closing the parenthesis then let the user know
         print_formatted_text(ANSI(f'\x1b[31mMissing closing quotation, so cannot parse input'))
         return '', dict()
 
@@ -132,7 +84,6 @@ def execute_shell():
         user_input = cli.SESSION.prompt(
             ANSI(f"\x1b[32m{getpass.getuser()}@google-drive\x1b[37m:\x1b[34m~{cli.REMOTE_FILE_PATH}\x1b[37m$ "),
             auto_suggest=AutoSuggestFromHistory(),
-            completer=CustomPathCompleter(),
             complete_in_thread=True
         )
 
