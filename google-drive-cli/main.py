@@ -96,7 +96,7 @@ def execute_shell():
             if arguments and command:
                 FUNCTION_COMMANDS[command](arguments)
 
-    # If we try to create or access files that we are not allowed to then let the user knows
+    # If we try to create or access files that we are not allowed to then let the user know
     except PermissionError as e:
         print_formatted_text(ANSI(f"\x1b[31mCannot create or access file location '{e.filename}'. Permission denied!"))
 
